@@ -1,0 +1,36 @@
+language: elixir
+sudo: false
+otp_release:
+  - 19.3
+elixir:
+  - 1.6
+env:
+  global:
+    - HEX_USERNAME=jmartin84
+    - MIX_ENV=test
+cache:
+  directories:
+    - _build
+    - deps
+script:
+  - mix deps.get
+  - mix credo --strict
+  # https://github.com/jeremyjh/dialyxir#command-line-options
+  # > exit immediately with same exit status as dialyzer. useful for CI
+  #- mix dialyzer
+  - mix test
+deploy:
+   # https://docs.travis-ci.com/user/deployment/script/
+   # > `script` must be a scalar pointing to an executable file or command.
+   provider: script
+   # http://yaml.org/spec/1.2/spec.html#id2779048
+   # `>-` indicates the line folding.
+   script: >-
+     mix deps.get &&
+     mix hex.config username "$HEX_USERNAME" &&
+     (mix hex.config encrypted_key "$HEX_ENCRYPTED_KEY" > /dev/null 2>&1) &&
+     (echo "$HEX_PASSPHRASE"\\nY | mix hex.publish) &&
+     mix clean &&
+     mix deps.clean --all
+   on:
+    tags: true
