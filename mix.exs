@@ -39,6 +39,7 @@ defmodule WebpackStatic.MixProject do
       {:httpotion, "~> 3.1.0"},
       {:poison, "~> 3.1"},
       {:plug, "~> 1.0"},
+      {:dialyzex, "~> 1.1.0", only: :dev},
       {:credo, "~> 0.9.1", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.16", only: :dev, runtime: false}
       # {:dep_from_hexpm, "~> 0.3.0"},

@@ -1,8 +1,7 @@
 defmodule WebpackStaticTest do
-  use ExUnit.Case
-  doctest WebpackStatic
+  @moduledoc false
 
-  test "greets the world" do
-    assert WebpackStatic.hello() == :world
-  end
+  use ExUnit.Case
+  doctest WebpackStatic.Plug
+
 end

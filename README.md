@@ -1,4 +1,6 @@
 # WebpackStatic
+[![Build Status](https://travis-ci.org/jmartin84/WebpackStaticPlug.svg?branch=master)](https://travis-ci.org/jmartin84/WebpackStaticPlug)
+
   Phoenix plug to proxy a locally running instance of the webpack dev server.<br />
   This plug will only serve assets when the env parameter has the value of `:dev`.<br />
   Phoenix will be allowed a chance to resolve any assets not resolved by webpack.<br />

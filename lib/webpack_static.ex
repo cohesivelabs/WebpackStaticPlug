@@ -18,7 +18,6 @@ defmodule WebpackStatic.Plug do
 
     $ mix deps.get
 
-
   ## Usage
   Add WebpackStatic.Plug as a plug in the phoenix project's endpoint.
 
