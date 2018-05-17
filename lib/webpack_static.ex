@@ -41,42 +41,55 @@ defmodule WebpackStatic.Plug do
   require Poison
 
   @doc false
-  def init([port, webpack_assets, env, manifest_path]) do
-    [port, webpack_assets, env, manifest_path]
+  def init(args) do
+    List.keysort(args, 0)
   end
 
   @doc false
   def call(conn, [
-        {:port, port},
-        {:webpack_assets, assets},
         {:env, env},
-        {:manifest_path, manifest_path}
+        {:manifest_path, manifest_path},
+        {:port, port},
+        {:webpack_assets, assets}
       ]) do
     if env == :dev do
       manifest_task = Task.async(fn -> get_manifest(manifest_path, port) end)
-      serve_asset(conn, port, assets, Task.await(manifest_task))
+      manifest = Task.await(manifest_task)
+
+      case manifest do
+        {:error, message} -> raise message
+        {:ok, manifest} -> serve_asset(conn, port, assets, manifest)
+        nil -> serve_asset(conn, port, assets, nil)
+      end
     else
       conn
     end
   end
 
-  defp get_manifest(path, port) do
+  defp get_manifest(path, port) when is_binary(path) do
     url =
       "http://localhost:#{port}"
       |> URI.merge(path)
       |> URI.to_string()
 
-    case Http.get(url, headers: [Accept: "application/json"]) do
-      %HTTPotion.Response{status_code: code} when code == 400 ->
-        raise "404 could not find: #{url}"
+    response = Http.get(url, headers: [Accept: "application/json"])
+
+    case response do
+      %HTTPotion.Response{status_code: code} when code == 404 ->
+        {:error, "Error: could not find manifest located at #{url}"}
+
+      %HTTPotion.Response{body: body, status_code: code} when code >= 400 ->
+        {:error, "Error: fetching manifest, status:#{code} body:#{body}"}
 
       %HTTPotion.Response{body: body} ->
-        Poison.decode!(body)
+        Poison.decode(body)
 
       %HTTPotion.ErrorResponse{message: message} ->
-        raise "Error fetching manifest: #{message}"
+        {:error, "Error: fetching manifest: #{message}"}
     end
   end
+
+  defp get_manifest(_, _), do: nil
 
   defp serve_asset(
          conn = %Plug.Conn{
@@ -92,7 +105,7 @@ defmodule WebpackStatic.Plug do
     actual_path =
       case manifest do
         %{^requested_path => value} -> value
-        _ -> file_name
+        _ -> requested_path
       end
 
     url =
@@ -112,7 +125,13 @@ defmodule WebpackStatic.Plug do
         headers: req_headers
       )
 
-      receive_response(conn)
+      response = receive_response(conn)
+
+      case response do
+        {:not_found, conn} -> conn
+        {:error, message} -> raise message
+        {:ok, conn} -> Conn.halt(conn)
+      end
     else
       conn
     end
@@ -125,28 +144,40 @@ defmodule WebpackStatic.Plug do
       %HTTPotion.AsyncChunk{chunk: chunk} ->
         case Conn.chunk(conn, chunk) do
           {:ok, conn} -> receive_response(conn)
-          {:error, reason} -> raise reason
+          {:error, reason} -> {:error, "Error fetching webpack resource: #{reason}"}
         end
 
       %HTTPotion.AsyncHeaders{status_code: status} when status == 404 ->
-        conn
+        {:not_found, conn}
 
-      %HTTPotion.AsyncHeaders{headers: %HTTPotion.Headers{hdrs: headers}} ->
+      %HTTPotion.AsyncHeaders{
+        status_code: code,
+        headers: %HTTPotion.Headers{
+          hdrs: headers
+        }
+      }
+      when code < 400 ->
         headers
         |> Map.to_list()
         |> Enum.reduce(conn, fn {key, value}, acc ->
           Conn.put_resp_header(acc, key, value)
         end)
-        |> Conn.send_chunked(200)
+        |> Conn.send_chunked(code)
         |> receive_response()
 
       %HTTPotion.AsyncEnd{} ->
-        Conn.halt(conn)
+        {:ok, conn}
 
       %HTTPotion.ErrorResponse{message: message} ->
-        raise "Error fetching webpack resource: #{message}"
+        {:error, "Error fetching webpack resource: #{message}"}
+
+      %HTTPotion.AsyncHeaders{
+        status_code: code
+      }
+      when code >= 400 ->
+        {:error, "Webpack responded with error code: #{code}"}
     after
-      15_000 -> raise "Error fetching webpack resource: Timeout exceeded"
+      15_000 -> {:error, "Error fetching webpack resource: Timeout exceeded"}
     end
   end
 end
